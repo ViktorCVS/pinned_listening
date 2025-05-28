@@ -6,11 +6,17 @@ This project lets you set arbitrary “pins” in an audio file and instantly ju
 
 ## How to install
 
-### Via Git
-Navigate to the directory where you want to clone the project and run:
+You can install the project **with or without Git**. With Git, navigate to the folder where you want to clone the project and run:
 
 ```
 git clone https://github.com/ViktorCVS/pinned_listening.git
+```
+
+Or if you don't have git, download the ZIP from the Releases page, unzip it into your desired directory.
+
+Then create and activate a virtual environment:
+
+```
 cd pinned_listening
 python -m venv venv
 ```

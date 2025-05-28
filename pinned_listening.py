@@ -151,16 +151,17 @@ class PinnedListeningApp:
         sec = self._parse_time(self.time_entry.get().strip())
         if sec is None or not (0 <= sec <= self.duration):
             return
-        # record actual current position rather than play_start
-        current = self.scale.get()
-        self.play_start = current
-        pygame.mixer.music.play(); pygame.mixer.music.set_pos(current)
+        # set play_start to parsed time
+        self.play_start = sec
+        # start playback at that position then pause
+        pygame.mixer.music.play()
+        pygame.mixer.music.set_pos(sec)
         pygame.mixer.music.pause()
         self.is_paused = True
-        # update display
-        self.scale.set(int(current))
-        t = int(current)
-        h, m, s = t//3600, (t%3600)//60, t%60
+        # update slider and label immediately
+        self.scale.set(int(sec))
+        t = int(sec)
+        h, m, s = t // 3600, (t % 3600) // 60, t % 60
         self.time_label.config(text=f"{h:02d}:{m:02d}:{s:02d}")
         self.clear_entry()
 

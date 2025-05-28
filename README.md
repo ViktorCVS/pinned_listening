@@ -2,7 +2,7 @@
 This project lets you set arbitrary “pins” in an audio file and instantly jump back to those points using a keyboard shortcut.
 
 ## Before clone
-- Python 3 is required to run this program.
+- Python 3 is required to run this program. Download on official site: https://www.python.org/downloads/
 
 ## How to install
 

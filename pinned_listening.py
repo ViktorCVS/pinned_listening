@@ -46,7 +46,7 @@ class PinnedListeningApp:
         self.time_label = tk.Label(root, text="00:00:00")
         self.time_label.pack(pady=(5, 0))
 
-        # Entry + buttons
+        # Entry + buttons frame
         entry_frame = tk.Frame(root)
         entry_frame.pack(pady=(5, 10))
         self.time_entry = tk.Entry(entry_frame, width=8, state="disabled")
@@ -54,8 +54,17 @@ class PinnedListeningApp:
         self.go_btn = tk.Button(entry_frame, text="Go", state="disabled", command=self.goto_time)
         self.go_btn.grid(row=0, column=1, padx=(0,5))
         self.go_pause_btn = tk.Button(entry_frame, text="Go/Pause", state="disabled", command=self.goto_time_pause)
-        self.go_pause_btn.grid(row=0, column=2)
+        self.go_pause_btn.grid(row=0, column=2, padx=(0,5))
+        # Custom offset entry and jump buttons
+        self.offset_entry = tk.Entry(entry_frame, width=4, state="disabled")
+        self.offset_entry.insert(0, "5")
+        self.offset_entry.grid(row=0, column=3, padx=(0,5))
+        self.backward_btn = tk.Button(entry_frame, text="<<", state="disabled", command=self.jump_backward)
+        self.backward_btn.grid(row=0, column=4, padx=5)
+        self.forward_btn = tk.Button(entry_frame, text=">>", state="disabled", command=self.jump_forward)
+        self.forward_btn.grid(row=0, column=5)
 
+        # Clear selection on click outside
         self.root.bind("<Button-1>", self.on_root_click)
 
         # Status
@@ -66,18 +75,17 @@ class PinnedListeningApp:
         audio_dir = os.path.join(os.path.dirname(__file__), "audio")
         os.makedirs(audio_dir, exist_ok=True)
         fp = filedialog.askopenfilename(initialdir=audio_dir, filetypes=[("WAV files","*.wav")])
-        if not fp: return
-        # load file into buffer
+        if not fp:
+            return
         data = open(fp, 'rb').read()
         bio = io.BytesIO(data)
-        # duration
+        # calculate duration
         with wave_open(io.BytesIO(data), 'rb') as wav:
             frames = wav.getnframes()
             rate = wav.getframerate()
             self.duration = frames / float(rate)
-        # load in pygame
         pygame.mixer.music.load(bio)
-        # reset state
+        # reset playback state
         self.audio_path = fp
         self.play_start = 0
         self.scale.config(to=int(self.duration), state="normal")
@@ -85,10 +93,11 @@ class PinnedListeningApp:
         self.time_label.config(text="00:00:00")
         pygame.mixer.music.stop()
         self.is_paused = False
-        # enable
+        # enable controls
         for w in (self.play_btn, self.pause_btn, self.stop_btn,
                   self.pin_btn, self.remove_pins_btn,
-                  self.scale, self.time_entry, self.go_btn, self.go_pause_btn):
+                  self.scale, self.time_entry, self.go_btn, self.go_pause_btn,
+                  self.offset_entry, self.backward_btn, self.forward_btn):
             w.config(state="normal")
         self.status.config(text=os.path.basename(fp))
         if not self.updating:
@@ -116,7 +125,8 @@ class PinnedListeningApp:
         self.remove_all_pins()
         for w in (self.play_btn, self.pause_btn, self.stop_btn,
                   self.pin_btn, self.remove_pins_btn,
-                  self.scale, self.time_entry, self.go_btn, self.go_pause_btn):
+                  self.scale, self.time_entry, self.go_btn, self.go_pause_btn,
+                  self.offset_entry, self.backward_btn, self.forward_btn):
             w.config(state="disabled")
         self.status.config(text="No file loaded")
 
@@ -125,12 +135,13 @@ class PinnedListeningApp:
         self.play_start = sec
         pygame.mixer.music.pause()
         pygame.mixer.music.set_pos(sec)
-        pygame.mixer.music.unpause()
-        self.is_paused = False
+        if not self.is_paused:
+            pygame.mixer.music.unpause()
 
     def goto_time(self):
         sec = self._parse_time(self.time_entry.get().strip())
-        if sec is None or not (0 <= sec <= self.duration): return
+        if sec is None or not (0 <= sec <= self.duration):
+            return
         self.play_start = sec
         pygame.mixer.music.play(); pygame.mixer.music.set_pos(sec)
         self.is_paused = False
@@ -138,60 +149,38 @@ class PinnedListeningApp:
 
     def goto_time_pause(self):
         sec = self._parse_time(self.time_entry.get().strip())
-        if sec is None or not (0 <= sec <= self.duration): return
-        self.play_start = sec
-        pygame.mixer.music.play(); pygame.mixer.music.set_pos(sec)
+        if sec is None or not (0 <= sec <= self.duration):
+            return
+        # record actual current position rather than play_start
+        current = self.scale.get()
+        self.play_start = current
+        pygame.mixer.music.play(); pygame.mixer.music.set_pos(current)
         pygame.mixer.music.pause()
         self.is_paused = True
-        # update timer display immediately
-        self.scale.set(int(sec))
-        t = int(sec)
-        h = t // 3600
-        m = (t % 3600) // 60
-        s = t % 60
+        # update display
+        self.scale.set(int(current))
+        t = int(current)
+        h, m, s = t//3600, (t%3600)//60, t%60
         self.time_label.config(text=f"{h:02d}:{m:02d}:{s:02d}")
         self.clear_entry()
 
-    def _parse_time(self, val):
-        parts = val.split(':')
-        try:
-            if len(parts)==1: return float(parts[0])
-            if len(parts)==2:
-                m,s = parts; return int(m)*60 + float(s)
-            if len(parts)==3:
-                h,m,s = parts; return int(h)*3600 + int(m)*60 + float(s)
-        except:
-            messagebox.showerror("Erro","Formato inválido! Use SS, M:SS ou H:MM:SS.")
-        return None
-
-    def clear_entry(self):
-        self.time_entry.delete(0, tk.END)
-        self.time_entry.selection_clear()
-        self.root.focus()
-
-    def update_slider(self):
-        if self.audio_path and not self.is_paused:
-            pos_ms = pygame.mixer.music.get_pos()
-            cur = self.play_start + pos_ms/1000.0 if pos_ms>=0 else self.play_start
-            self.scale.set(min(int(cur), int(self.duration)))
-            t = int(cur)
-            h = t // 3600; m = (t % 3600) // 60; s = t % 60
-            self.time_label.config(text=f"{h:02d}:{m:02d}:{s:02d}")
-        self.root.after(200, self.update_slider)
-
     def create_pin(self):
-        raw = simpledialog.askstring("Set Shortcut","Digite atalho (ex:1,a,Control-p)")
-        if not raw: return
+        # pin the actual current position from slider
+        raw = simpledialog.askstring("Set Shortcut","Enter shortcut (e.g. 1, a, Control-p)")
+        if not raw:
+            return
         raw = raw.strip()
         if raw.startswith('<') and raw.endswith('>'):
             pat = raw
-        elif len(raw)==1 and raw.isalnum():
+        elif len(raw) == 1 and raw.isalnum():
             pat = f"<KeyPress-{raw}>"
         else:
             pat = f"<{raw}>"
-        self.pins[pat] = self.play_start
+        # use slider value as pin time
+        sec = self.scale.get()
+        self.pins[pat] = sec
         try:
-            self.root.bind_all(pat, lambda e, s=self.play_start: self.on_pin_play(e, s), add='+')
+            self.root.bind_all(pat, lambda e, s=sec: self.on_pin_play(e, s), add='+')
         except:
             pass
 
@@ -202,13 +191,70 @@ class PinnedListeningApp:
         pygame.mixer.music.play(); pygame.mixer.music.set_pos(sec)
         self.is_paused = False
 
+    def jump_offset(self, offset):
+        new = min(max(self.play_start + offset, 0), self.duration)
+        self.play_start = new
+        pygame.mixer.music.pause()
+        pygame.mixer.music.set_pos(new)
+        if not self.is_paused:
+            pygame.mixer.music.unpause()
+        self.scale.set(int(new))
+        t = int(new); h = t // 3600; m = (t % 3600) // 60; s = t % 60
+        self.time_label.config(text=f"{h:02d}:{m:02d}:{s:02d}")
+
+    def jump_forward(self):
+        try:
+            off = float(self.offset_entry.get())
+        except:
+            off = 5.0
+        self.jump_offset(off)
+
+    def jump_backward(self):
+        try:
+            off = float(self.offset_entry.get())
+        except:
+            off = 5.0
+        self.jump_offset(-off)
+
+    def _parse_time(self, val):
+        parts = val.split(':')
+        try:
+            if len(parts) == 1:
+                return float(parts[0])
+            if len(parts) == 2:
+                m, s = parts
+                return int(m)*60 + float(s)
+            if len(parts) == 3:
+                h, m, s = parts
+                return int(h)*3600 + int(m)*60 + float(s)
+        except:
+            messagebox.showerror("Error", "Invalid format! Use SS, M:SS or H:MM:SS.")
+        return None
+
+    def clear_entry(self):
+        self.time_entry.delete(0, tk.END)
+        self.time_entry.selection_clear()
+        self.root.focus()
+
+    def update_slider(self):
+        if self.audio_path and not self.is_paused:
+            pos_ms = pygame.mixer.music.get_pos()
+            cur = self.play_start + pos_ms/1000.0 if pos_ms >= 0 else self.play_start
+            self.scale.set(min(int(cur), int(self.duration)))
+            t = int(cur)
+            h, m, s = t // 3600, (t % 3600) // 60, t % 60
+            self.time_label.config(text=f"{h:02d}:{m:02d}:{s:02d}")
+        self.root.after(200, self.update_slider)
+
     def remove_all_pins(self):
-        for pat in list(self.pins): self.root.unbind_all(pat)
+        for pat in list(self.pins):
+            self.root.unbind_all(pat)
         self.pins.clear()
 
     def on_root_click(self, event):
         if event.widget is not self.time_entry:
-            self.time_entry.selection_clear(); self.root.focus()
+            self.time_entry.selection_clear()
+            self.root.focus()
 
 
 def main():
